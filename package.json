@@ -1,0 +1,11 @@
+{
+  "name": "agma-chat-logger",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "scripts": {
+    "start": "node bot.js"
+  }
+}
