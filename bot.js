@@ -4,7 +4,7 @@ const http = require('http');
 
 const CONFIG = {
     // Si no conecta en 5006, cambia a 's39.agma.io:452' (puerto nativo de s39)
-    host: 's39.agma.io:5006', 
+    host: 's39.agma.io:452', 
     webhook: 'https://discord.com/api/webhooks/1531722060605292649/KjdfGxANoH89_t8wiRfn8-Foxlm6KqLGSgX3nYYa-q1aAgC4A2b5ZMZUqZVTKLiJ8cfD',
     flushInterval: 3000
 };
