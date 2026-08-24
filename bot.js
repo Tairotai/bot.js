@@ -1,11 +1,21 @@
 const WebSocket = require('ws');
 const https = require('https');
+const http = require('http');
 
 const CONFIG = {
     serverWs: 'wss://s39.agma.io:5006',
     webhook: 'https://discord.com/api/webhooks/1531722060605292649/KjdfGxANoH89_t8wiRfn8-Foxlm6KqLGSgX3nYYa-q1aAgC4A2b5ZMZUqZVTKLiJ8cfD',
     flushInterval: 3000
 };
+
+// Servidor HTTP simple para que Render marque el servicio como "Live"
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Agma Discord Logger Online\n');
+}).listen(PORT, () => {
+    console.log(`[+] Servidor web escuchando en puerto ${PORT}`);
+});
 
 let msgBuffer = [];
 
@@ -35,6 +45,7 @@ function sendDiscordBatch() {
 setInterval(sendDiscordBatch, CONFIG.flushInterval);
 
 function connect() {
+    console.log('[*] Conectando a Agma...');
     const ws = new WebSocket(CONFIG.serverWs, {
         headers: { 'Origin': 'https://agma.io' }
     });
@@ -42,6 +53,7 @@ function connect() {
     ws.binaryType = 'arraybuffer';
 
     ws.on('open', () => {
+        console.log('[+] Conectado al servidor de Agma.');
         const handshake = Buffer.alloc(14);
         handshake.writeUInt8(245, 0);
         handshake.writeUInt16LE(62, 1);
@@ -96,12 +108,15 @@ function connect() {
             }
 
             if (msg.trim().length > 0) {
-                msgBuffer.push(`**${name || 'Agma.io'}**: ${msg}`);
+                const line = `**${name || 'Agma.io'}**: ${msg}`;
+                console.log(line);
+                msgBuffer.push(line);
             }
         }
     });
 
     ws.on('close', () => {
+        console.log('[-] Desconectado. Reconectando en 5s...');
         setTimeout(connect, 5000);
     });
 
