@@ -3,7 +3,8 @@ const https = require('https');
 const http = require('http');
 
 const CONFIG = {
-    serverWs: 'wss://s39.agma.io:5006',
+    // Si no conecta en 5006, cambia a 's39.agma.io:452' (puerto nativo de s39)
+    host: 's39.agma.io:5006', 
     webhook: 'https://discord.com/api/webhooks/1531722060605292649/KjdfGxANoH89_t8wiRfn8-Foxlm6KqLGSgX3nYYa-q1aAgC4A2b5ZMZUqZVTKLiJ8cfD',
     flushInterval: 3000
 };
@@ -14,7 +15,7 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Agma Chat Logger Live\n');
 }).listen(PORT, () => {
-    console.log(`[+] Puerto ${PORT} listo`);
+    console.log(`[+] Servidor web escuchando en puerto ${PORT}`);
 });
 
 let msgBuffer = [];
@@ -44,7 +45,6 @@ function sendDiscordBatch() {
 
 setInterval(sendDiscordBatch, CONFIG.flushInterval);
 
-// Algoritmo nativo de checksum de Agma (_0xf937a3)
 function calculateChecksum(buffer, a, b, offset) {
     let n = 12354678 + offset;
     for (let i = 0; i < b; i++) {
@@ -54,22 +54,28 @@ function calculateChecksum(buffer, a, b, offset) {
 }
 
 function connect() {
-    console.log('[*] Conectando a Agma...');
-    
-    // Conexión con subprotocolo exacto y headers de navegador
-    const ws = new WebSocket(CONFIG.serverWs, ['WebSocket'], {
+    const cleanHost = CONFIG.host.replace(/^wss?:\/\//, '');
+    const domainOnly = cleanHost.split(':')[0];
+    const targetUrl = `wss://${cleanHost}`;
+
+    console.log(`[*] Conectando a ${targetUrl}...`);
+
+    const ws = new WebSocket(targetUrl, ['WebSocket'], {
         headers: {
             'Origin': 'https://agma.io',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'en-US,en;q=0.9'
+        },
+        servername: domainOnly,
+        rejectUnauthorized: false
     });
 
     ws.binaryType = 'arraybuffer';
 
     ws.on('open', () => {
-        console.log('[+] Socket abierto. Enviando Handshake verificado...');
+        console.log('[+] Conectado. Enviando Handshake 245...');
         
-        // Construcción exacta de 14 bytes según cliente oficial
         const handshake = Buffer.alloc(14);
         const randomSeed = Math.floor(1 + (53550 + 600000 * Math.random()));
         
@@ -91,15 +97,15 @@ function connect() {
         if (buf.readUInt8(0) === 240) offset += 5;
         const opcode = buf.readUInt8(offset);
 
-        // Opcode 64: Configuración del mapa recibida -> Pasar a modo espectador
+        // Opcode 64: Configuración inicial del mapa -> Solicitar modo espectador
         if (opcode === 64) {
             const spec = Buffer.alloc(1);
-            spec.writeUInt8(12, 0); // Opcode 12 = Spectate
+            spec.writeUInt8(12, 0);
             ws.send(spec);
-            console.log('[+] Conectado y escuchando el chat en vivo.');
+            console.log('[+] Modo espectador activo. Escuchando chat...');
         }
 
-        // Opcode 99: Mensaje de Chat
+        // Opcode 99: Chat Message
         if (opcode === 99) {
             offset += 1;
             const flags = buf.readUInt8(offset); offset += 1;
@@ -146,7 +152,7 @@ function connect() {
     });
 
     ws.on('error', (err) => {
-        console.error('[!] Error en socket:', err.message);
+        console.error('[!] Error:', err.message);
         ws.close();
     });
 }
