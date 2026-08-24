@@ -8,13 +8,13 @@ const CONFIG = {
     flushInterval: 3000
 };
 
-// Servidor HTTP simple para que Render marque el servicio como "Live"
+// Servidor HTTP para Render
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Agma Discord Logger Online\n');
+    res.end('Agma Chat Logger Live\n');
 }).listen(PORT, () => {
-    console.log(`[+] Servidor web escuchando en puerto ${PORT}`);
+    console.log(`[+] Puerto ${PORT} listo`);
 });
 
 let msgBuffer = [];
@@ -44,28 +44,44 @@ function sendDiscordBatch() {
 
 setInterval(sendDiscordBatch, CONFIG.flushInterval);
 
+// Algoritmo nativo de checksum de Agma (_0xf937a3)
+function calculateChecksum(buffer, a, b, offset) {
+    let n = 12354678 + offset;
+    for (let i = 0; i < b; i++) {
+        n += buffer[a + i] * (i + 4);
+    }
+    return (n + 3) >>> 0;
+}
+
 function connect() {
     console.log('[*] Conectando a Agma...');
-    const ws = new WebSocket(CONFIG.serverWs, {
-        headers: { 'Origin': 'https://agma.io' }
+    
+    // Conexión con subprotocolo exacto y headers de navegador
+    const ws = new WebSocket(CONFIG.serverWs, ['WebSocket'], {
+        headers: {
+            'Origin': 'https://agma.io',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     });
 
     ws.binaryType = 'arraybuffer';
 
     ws.on('open', () => {
-        console.log('[+] Conectado al servidor de Agma.');
+        console.log('[+] Socket abierto. Enviando Handshake verificado...');
+        
+        // Construcción exacta de 14 bytes según cliente oficial
         const handshake = Buffer.alloc(14);
+        const randomSeed = Math.floor(1 + (53550 + 600000 * Math.random()));
+        
         handshake.writeUInt8(245, 0);
         handshake.writeUInt16LE(62, 1);
         handshake.writeUInt16LE(158, 3);
-        handshake.writeUInt32LE(123456, 5);
+        handshake.writeUInt32LE(randomSeed, 5);
+        
+        const checksum = calculateChecksum(handshake, 0, 9, 245);
+        handshake.writeUInt32LE(checksum, 9);
+        
         ws.send(handshake);
-
-        setTimeout(() => {
-            const spec = Buffer.alloc(1);
-            spec.writeUInt8(12, 0);
-            ws.send(spec);
-        }, 1000);
     });
 
     ws.on('message', (data) => {
@@ -75,6 +91,15 @@ function connect() {
         if (buf.readUInt8(0) === 240) offset += 5;
         const opcode = buf.readUInt8(offset);
 
+        // Opcode 64: Configuración del mapa recibida -> Pasar a modo espectador
+        if (opcode === 64) {
+            const spec = Buffer.alloc(1);
+            spec.writeUInt8(12, 0); // Opcode 12 = Spectate
+            ws.send(spec);
+            console.log('[+] Conectado y escuchando el chat en vivo.');
+        }
+
+        // Opcode 99: Mensaje de Chat
         if (opcode === 99) {
             offset += 1;
             const flags = buf.readUInt8(offset); offset += 1;
@@ -109,7 +134,7 @@ function connect() {
 
             if (msg.trim().length > 0) {
                 const line = `**${name || 'Agma.io'}**: ${msg}`;
-                console.log(line);
+                console.log(`[CHAT] ${line}`);
                 msgBuffer.push(line);
             }
         }
@@ -120,7 +145,8 @@ function connect() {
         setTimeout(connect, 5000);
     });
 
-    ws.on('error', () => {
+    ws.on('error', (err) => {
+        console.error('[!] Error en socket:', err.message);
         ws.close();
     });
 }
